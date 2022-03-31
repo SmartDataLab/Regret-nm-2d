@@ -11,7 +11,8 @@ import matplotlib.pyplot as plt
 # print("import packages")
 from datasets import generate_dataset_1x2, generate_dataset_nxk
 # print("import packages")
-from regretnet import RegretNet, train_loop, test_loop
+# from regretnet import RegretNet, train_loop, test_loop
+from regretnet_nm_2d import RegretNet_NM_2D, train_loop, test_loop
 # print("import packages")
 # print("import packages")
 from datasets import Dataloader
@@ -30,7 +31,8 @@ parser = ArgumentParser()
 parser.add_argument('--random-seed', type=int, default=0)
 parser.add_argument('--num-examples', type=int, default=100000)
 parser.add_argument('--test-num-examples', type=int, default=3000)
-parser.add_argument('--n-agents', type=int, default=1)
+parser.add_argument('--n-agents', type=int, default=100)
+parser.add_argument('--k-positions', type=int, default=20)
 parser.add_argument('--n-items', type=int, default=2)
 parser.add_argument('--reserved-price', type=float, default=0)
 parser.add_argument('--num-epochs', type=int, default=500)
@@ -52,11 +54,12 @@ parser.add_argument('--lagr_update_iter', type=int, default=6.0)
 parser.add_argument('--lagr_update_iter_ir', type=int, default=6.0)
 parser.add_argument('--lagr_update_iter_rp', type=int, default=6.0)
 parser.add_argument('--ir_penalty_power', type=float, default=2)
+parser.add_argument('--ip_penalty_power', type=float, default=2)
 parser.add_argument('--resume', default="")
 
 # architectural arguments
-parser.add_argument('--p_activation', default='full_relu_clipped')
-parser.add_argument('--a_activation', default='softmax')
+parser.add_argument('--p_activation', default='full_relu_div')
+parser.add_argument('--a_activation', default='full_linear')
 parser.add_argument('--hidden_layer_size', type=int, default=100)
 parser.add_argument('--n_hidden_layers', type=int, default=2)
 parser.add_argument('--separate', action='store_true')
@@ -78,8 +81,9 @@ np.random.seed(args.random_seed)
 writer = None
 print("initial writer finish")
 
-
-model = RegretNet(args.n_agents, args.n_items, activation='relu', hidden_layer_size=args.hidden_layer_size,
+K_POSITION = 20
+POSITION_RANGE = [0,1]
+model = RegretNet_NM_2D(args.n_agents, args.n_items, args.k_positions, activation='relu', hidden_layer_size=args.hidden_layer_size,
                     n_hidden_layers=args.n_hidden_layers, p_activation=args.p_activation,
                     a_activation=args.a_activation, separate=args.separate).to(DEVICE)
 print("initial model finish")
@@ -89,7 +93,7 @@ if args.resume:
 
 if args.teacher_model != "":
     checkpoint = torch.load(args.teacher_model)
-    teachermodel = RegretNet(**checkpoint['arch'])
+    teachermodel = RegretNet_NM_2D(**checkpoint['arch'])
     teachermodel.load_state_dict(checkpoint['state_dict'], strict=False)
     teachermodel.to(DEVICE)
 else:
@@ -104,7 +108,7 @@ test_loader = Dataloader(test_data, batch_size=args.test_batch_size, shuffle=Tru
 
 print("start train loop")
 train_loop(
-    model, train_loader, test_loader, args, device=DEVICE, writer=writer
+    model, train_loader, test_loader, POSITION_RANGE, args, device=DEVICE, writer=writer
 )
 writer.close()
 pay, alloc, pay_result, result = test_loop(model, test_loader, args, device=DEVICE)

@@ -36,7 +36,9 @@ def generate_dataset_1x2(n_agents, n_items, num_examples, item1_range=(0,1), ite
     item2_vs = (item2_max - item2_min)*torch.rand((num_examples, n_agents, 1)) + item2_min
     return torch.cat( (item1_vs, item2_vs), dim=2)
 
+# the 
 def generate_dataset_nxk(n_agents, n_items, num_examples, item_ranges=None):
+    # item range default (0,1)
     if item_ranges is None:
         item_ranges = [(0, 1) for _ in range(n_items)]
     assert len(item_ranges) == n_items
@@ -45,4 +47,5 @@ def generate_dataset_nxk(n_agents, n_items, num_examples, item_ranges=None):
     for item in range(n_items):
         item_min, item_max = item_ranges[item]
         all_item_dists.append((item_max - item_min)*torch.rand((num_examples, n_agents, 1)) + item_min)
+    # (num_examples, n_agents, n_items) dtype = float  item_range 
     return torch.cat(all_item_dists, dim=2)
