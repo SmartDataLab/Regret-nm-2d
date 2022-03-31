@@ -1,3 +1,18 @@
+# Convert into the RegretNet-nm
+
+convert into the 2d space implement
+
+## TODO
+
+- [done]run with inital implement 
+- [pick]find the regret net data
+- comment the regret net module
+- generate our 2d daya
+
+## raw code explaination
+
+first get the totally full with the code and the 
+
 Dependencies are Python 3, a recent PyTorch, numpy/scipy, tqdm, future and tensorboard.
 
 Plotting with Matplotlib.

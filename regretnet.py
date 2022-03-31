@@ -5,9 +5,9 @@ import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm as tqdm
 import torch.nn.init
-import regretnet.ibp as ibp
+import ibp as ibp
 from util import plot_12_model, plot_payment, plot_loss, plot_regret
-from regretnet.datasets import generate_dataset_1x2, generate_dataset_nxk
+from datasets import generate_dataset_1x2, generate_dataset_nxk
 import json
 import pdb
 
@@ -529,8 +529,8 @@ def train_loop(
 
         if epoch % 5 == 4:
             _, _, _, test_result = test_loop(model, test_loader, args, device=device)
-            for key, value in test_result.items():
-                writer.add_scalar(f"test/stat/{key}", value, global_step=epoch)
+            # for key, value in test_result.items():
+            #     writer.add_scalar(f"test/stat/{key}", value, global_step=epoch)
             # plot_payment(model, grid_width=0.01, name=f"{args.name}_{epoch}")
             # plot_12_model(model, grid_width=0.01, name=f"{args.name}_{epoch}")
             arch = {'n_agents': model.n_agents,
@@ -548,34 +548,34 @@ def train_loop(
                         'args': args}
                        , f"result/{args.name}_{epoch}_checkpoint.pt")
 
-        writer.add_scalars('train/stat/regret',
-                           {"max": regrets.max(), "min": regrets.min(), "mean": regrets.mean()},
-                           global_step=epoch)
+        # writer.add_scalars('train/stat/regret',
+                        #    {"max": regrets.max(), "min": regrets.min(), "mean": regrets.mean()},
+                        #    global_step=epoch)
 
         # 向tensorboard中记录统计数据
-        writer.add_scalars('train/stat/regret',
-                           {"max": regrets.max(), "min": regrets.min(), "mean": regrets.mean()},
-                           global_step=epoch)
-        writer.add_scalars('train/stat/payment',
-                           {"max": payments.sum(dim=1).max(),"min": payments.sum(dim=1).min(), "mean": payments.sum(dim=1).mean()},
-                           global_step=epoch)
-        writer.add_scalars('train/stat/ir_violation',
-                           {"max": ir_violation.max(), "min": ir_violation.min(), "mean": ir_violation.mean()},
-                           global_step=epoch)
-        writer.add_scalars('train/stat/rp_violation',
-                           {"max": rp_violation.max(), "min": rp_violation.min(), "mean": rp_violation.mean()},
-                           global_step=epoch)
-        writer.add_scalars('loss', {"regret": regret_loss,
-                                    "payment": payment_loss,
-                                    "ir_violation": ir_loss,
-                                    "rp_violation": rp_loss
-                                    }, global_step=epoch)
+        # writer.add_scalars('train/stat/regret',
+        #                    {"max": regrets.max(), "min": regrets.min(), "mean": regrets.mean()},
+        #                    global_step=epoch)
+        # writer.add_scalars('train/stat/payment',
+        #                    {"max": payments.sum(dim=1).max(),"min": payments.sum(dim=1).min(), "mean": payments.sum(dim=1).mean()},
+        #                    global_step=epoch)
+        # writer.add_scalars('train/stat/ir_violation',
+        #                    {"max": ir_violation.max(), "min": ir_violation.min(), "mean": ir_violation.mean()},
+        #                    global_step=epoch)
+        # writer.add_scalars('train/stat/rp_violation',
+        #                    {"max": rp_violation.max(), "min": rp_violation.min(), "mean": rp_violation.mean()},
+        #                    global_step=epoch)
+        # writer.add_scalars('loss', {"regret": regret_loss,
+        #                             "payment": payment_loss,
+        #                             "ir_violation": ir_loss,
+        #                             "rp_violation": rp_loss
+        #                             }, global_step=epoch)
 
-        writer.add_scalars('multiplier', {"regret": regret_mults.mean(),
-                                          "payment": payment_mult,
-                                          "ir_violation": ir_lagr_mults.mean(),
-                                          "rp_violation": rp_lagr_mults.mean()
-                                          }, global_step=epoch)
+        # writer.add_scalars('multiplier', {"regret": regret_mults.mean(),
+        #                                   "payment": payment_mult,
+        #                                   "ir_violation": ir_lagr_mults.mean(),
+        #                                   "rp_violation": rp_lagr_mults.mean()
+        #                                   }, global_step=epoch)
 
 
 def train_loop_ibp(
