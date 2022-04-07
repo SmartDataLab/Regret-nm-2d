@@ -47,6 +47,7 @@ class RegretNet_NM_2D(nn.Module):
         # 输出为获得每个物品的竞拍人及每个竞拍人付出的支付价格
 
         self.payments_size = self.k_locations
+        # 20
         self.allocations_size = self.k_locations * self.loc_n_dim
 
         if self.a_activation == 'softmax':
@@ -65,7 +66,7 @@ class RegretNet_NM_2D(nn.Module):
                                                   ibp.View((-1, self.k_locations, self.loc_n_dim))]
         elif self.a_activation == 'full_relu_clipped':
             self.allocation_head = [ibp.Linear(self.hidden_layer_size, self.allocations_size),
-                                                  ibp.ReLUClipped(lower=0, upper=self.loc_n_dim),
+                                                  ibp.ReLUClipped(lower=0, upper=1),
                                                   ibp.View((-1, self.k_locations, self.loc_n_dim))]
         elif self.a_activation == 'full_relu_div':
             self.allocation_head = [ibp.Linear(self.hidden_layer_size, self.allocations_size),
@@ -112,7 +113,7 @@ class RegretNet_NM_2D(nn.Module):
                 ibp.Linear(self.hidden_layer_size, self.payments_size), ibp.Sigmoid()
             ]
         elif p_activation == 'full_relu_div':
-            self.payment_head = [ibp.Linear(self.hidden_layer_size, self.payments_size), ibp.ReLUClipped(lower=0, upper=1),ibp.Allo_Div(dim=1)]
+            self.payment_head = [ibp.Linear(self.hidden_layer_size, self.payments_size), ibp.ReLUClipped(lower=0.1, upper=0.9),ibp.Allo_Div(dim=1)]
         else:
             raise ValueError('payment activation behavior is not defined')
 
@@ -210,10 +211,14 @@ def calc_agent_util(valuations, agent_allocations, payments):
     # valuations is agent positon
     # use manhatta distance to calculate the position
     # calculate the 
-
+    # 原始
     # util_from_items = torch.sum(agent_allocations * valuations, dim=2)
+    # report location x alloca
     agent_postion_c_dist = torch.cdist(valuations, agent_allocations)
     util_from_items,_ =  torch.min(agent_postion_c_dist, dim=2)
+    Max_dist = 1.5
+    # util = f(dist) f = C - x
+    util_from_items = Max_dist - util_from_items
 
     return util_from_items# - payments
 
@@ -356,18 +361,6 @@ def test_loop(
     total_regret_sq = 0.0
     total_regret_sq_by_agt = [0. for i in range(n_agents)]
     total_payment = 0.0
-    total_payment_ir_adjusted = 0.0
-    total_payment_ir_adjusted_sq = 0.0
-    total_payment_rp_adjusted = 0.0
-    total_payment_rp_adjusted_sq = 0.0
-    total_ir_violation = 0
-    total_ir_violation_sq = 0
-    total_ir_violation_count = 0
-    total_rp_violation = 0
-    total_rp_violation_sq = 0
-    total_rp_violation_count = 0
-    ir_violation_max = 0
-    rp_violation_max = 0
     regret_max = 0
     n_count = 0
     print(args)
@@ -389,19 +382,9 @@ def test_loop(
         payment_tot.append(payments)
         alloc_tot.append(allocs)
 
-        payments_limit = torch.sum(
-            (allocs * batch).view(batch.shape[0], args.n_agents, args.n_items), dim=2
-        )
-        payments_adj = torch.where(payments_limit>=payments,
-                                   payments,
-                                   torch.tensor(0.).to(device))
-        rp_adj = torch.where(rp_limit <= payments,
-                             payments,
-                             torch.tensor(0.).to(device))
-
         truthful_util = calc_agent_util(batch, allocs, payments)
 
-        misreport_allocs, misreport_payments = model(misreport_batch)
+        # misreport_allocs, misreport_payments = model(misreport_batch)
         misreport_util = tiled_misreport_util(misreport_batch, batch, model)
 
         regrets = misreport_util - truthful_util
@@ -413,40 +396,12 @@ def test_loop(
             total_regret_sq_by_agt[i] += (positive_regrets[:, i]**2).sum().item()
 
         total_payment += torch.sum(payments).item()
-        total_payment_ir_adjusted += torch.sum(payments_adj).item()
-        total_payment_ir_adjusted_sq += (torch.sum(payments_adj, dim=1)**2).sum().item()
-        total_payment_rp_adjusted += torch.sum(rp_adj).item()
-        total_payment_rp_adjusted_sq += (torch.sum(rp_adj, dim=1)**2).sum().item()
-
-        total_ir_violation += torch.clamp_min(payments - payments_limit, 0).sum().item()
-        total_ir_violation_sq += (torch.clamp_min(payments - payments_limit, 0).sum(dim=1)**2).sum().item()
-        total_ir_violation_count += (payments > payments_limit).sum().item()
-        total_rp_violation += torch.clamp_min(rp_limit - payments, 0).sum().item()
-        total_rp_violation_sq += (torch.clamp_min(rp_limit - payments, 0).sum(dim=1)**2).sum().item()
-        total_rp_violation_count += (payments < rp_limit).sum().item()
-        if ir_violation_max < torch.clamp_min(payments - payments_limit, 0).max():
-            ir_violation_max = torch.clamp_min(payments - payments_limit, 0).max().item()
-        if rp_violation_max < torch.clamp_min(rp_limit - payments, 0).max():
-            rp_violation_max =torch.clamp_min(rp_limit - payments, 0).max().item()
-        if regret_max < torch.clamp_min(regrets, 0).max():
-            regret_max = torch.clamp_min(regrets, 0).max().item()
         payment_list.append(total_payment/n_count)
 
     result = {"payment": total_payment / n_count,
-              "payment_ir_adjusted": total_payment_ir_adjusted / n_count,
-              "payment_ir_adjusted_std": (total_payment_ir_adjusted_sq / n_count - (total_payment_ir_adjusted/n_count)**2)**.5,
-              "payment_rp_adjusted": total_payment_rp_adjusted / n_count,
-              "payment_rp_adjusted_std": (total_payment_rp_adjusted_sq / n_count - (total_payment_rp_adjusted/n_count)**2)**.5,
               "regret_std": (total_regret_sq/n_count - (total_regret/n_count)**2)**.5,
               "regret_mean": total_regret/n_count,
-              "regret_max": regret_max,
-              "ir_violation_mean": total_ir_violation/n_count,
-              "ir_violation_std": (total_ir_violation_sq/n_count - (total_ir_violation/n_count)**2)**.5,
-              "ir_violation_max": ir_violation_max,
-              "rp_violation_mean": total_rp_violation/n_count,
-              "rp_violation_std": (total_rp_violation_sq/n_count-(total_rp_violation/n_count)**2)**.5,
-              "rp_violation_max": rp_violation_max
-              }
+              "regret_max": regret_max}
     for i in range(n_agents):
         result[f"regret_agt{i}_std"] = (total_regret_sq_by_agt[i]/n_count - (total_regret_by_agt[i]/n_count)**2)**.5
         result[f"regret_agt{i}_mean"] = total_regret_by_agt[i]/n_count
@@ -479,6 +434,8 @@ def train_loop(
     rho = args.rho
     rho_ir = args.rho_ir
 
+    loss_list = []
+
     for epoch in tqdm(range(args.num_epochs)):
         for i, batch in enumerate(train_loader):
             iter += 1
@@ -502,16 +459,17 @@ def train_loop(
             quadratic_regrets = positive_regrets ** 2
             regret_loss = (regret_mults * positive_regrets).mean()
 
-            ir_violation = -torch.clamp(truthful_util, max=0)
-            rp_violation = -torch.clamp(allocs - position_range[1], max=0)
-            rp_violation += -torch.clamp(position_range[0]- allocs, max=0)
+            # ir_violation = -torch.clamp(truthful_util, max=0)
+            ir_violation = torch.clamp(0.1 - payments, min=0)
+            rp_violation = torch.clamp(allocs - position_range[1], min=0)
+            rp_violation += torch.clamp(position_range[0]- allocs, min=0)
 
             # 计算losses
-            ir_loss = (ir_lagr_mults *(torch.abs(ir_violation)**args.ir_penalty_power)).mean()
-            rp_loss = (rp_lagr_mults *(torch.abs(rp_violation)**args.ip_penalty_power)).mean()
+            ir_loss = (torch.abs(ir_violation)**args.ir_penalty_power).mean()
+            rp_loss = (rp_lagr_mults *(torch.abs(rp_violation)**args.rp_penalty_power)).mean()
             # rp_loss = calc_rp_loss(model, payments, rp_limit, rp_lagr_mults, rho)
 
-            # TODO(to calculate the investment partial)
+            # DONE(to calculate the investment partial)
             #  batch [-1, n_agents, loc_n_dim]
             # allocs [-1, k_position, loc_n_dim]
             # payment [-1, k_position]
@@ -522,14 +480,16 @@ def train_loop(
             agent_choice = torch.argmin(agent_postion_c_dist, dim = 2)
             # [-1, n_agents] dtype int within k_position
             # payment_loss = payments.sum(dim=1).mean() * payment_mult
-            payment_loss = torch.gather(payments, dim=1, index =agent_choice).sum(dim=1).mean()  * payment_mult
+            payment_loss = 3 - torch.sqrt((torch.gather(payments, dim=1, index =agent_choice) * truthful_util).sum(dim=1) + 1).mean()  * payment_mult
 
-            loss_func = regret_loss \
-                        + (rho / 2.0) * torch.mean(quadratic_regrets) \
-                        + ir_loss\
-                        - payment_loss\
-                        + (1.0 / (2.0 * rho)) * rp_loss
-
+            loss_func = regret_loss + rp_loss * (1.0 / (2.0 * rho)) +  payment_loss + ir_loss
+                        # + (rho / 2.0) * torch.mean(quadratic_regrets) \
+                        # + ir_loss\
+                        #     + (1.0 / (2.0 * rho)) * rp_loss
+                        # - payment_loss\
+            loss_np = loss_func.cpu().detach().numpy()
+            print(loss_np)
+            loss_list.append(loss_np)
             # 更新网络参数
             optimizer.zero_grad()
             loss_func.backward()
@@ -543,7 +503,6 @@ def train_loop(
                 with torch.no_grad():
                     ir_lagr_mults += rho_ir * torch.mean(torch.abs(ir_violation))
             if iter % lagr_update_iter_rp == 0:
-                # print(payments.shape, rp_lagr_mults_tensor.shape, rp_lagr_mults)
                 with torch.no_grad():
                     rp_lagr_mults += rho * torch.mean(torch.max(position_range[1] - allocs.max(dim=1)[0], -(rp_lagr_mults_tensor/rho_tensor)) + 
                     torch.max(allocs.min(dim=1)[0] - position_range[0], -(rp_lagr_mults_tensor/rho_tensor)), dim=0)
@@ -553,13 +512,14 @@ def train_loop(
                 rho_ir += args.rho_incr_amount_ir
 
         if epoch % 5 == 4:
+            # TODO(sujinhua): make this run success
             _, _, _, test_result = test_loop(model, test_loader, args, device=device)
-            # for key, value in test_result.items():
-            #     writer.add_scalar(f"test/stat/{key}", value, global_step=epoch)
             # plot_payment(model, grid_width=0.01, name=f"{args.name}_{epoch}")
             # plot_12_model(model, grid_width=0.01, name=f"{args.name}_{epoch}")
             arch = {'n_agents': model.n_agents,
-                    'n_items': model.n_items,
+                    # 'n_items': model.n_,
+                     'loc_n_dim' : model.loc_n_dim,
+                    'k_locations' : model.k_locations,
                     'hidden_layer_size': model.hidden_layer_size,
                     'n_hidden_layers': model.n_hidden_layers,
                     'clamp_op': model.clamp_opt,
@@ -570,95 +530,5 @@ def train_loop(
             torch.save({'name': args.name,
                         'arch': arch,
                         'state_dict': model.state_dict(),
-                        'args': args}
-                       , f"result/{args.name}_{epoch}_checkpoint.pt")
-
-        # writer.add_scalars('train/stat/regret',
-                        #    {"max": regrets.max(), "min": regrets.min(), "mean": regrets.mean()},
-                        #    global_step=epoch)
-
-        # 向tensorboard中记录统计数据
-        # writer.add_scalars('train/stat/regret',
-        #                    {"max": regrets.max(), "min": regrets.min(), "mean": regrets.mean()},
-        #                    global_step=epoch)
-        # writer.add_scalars('train/stat/payment',
-        #                    {"max": payments.sum(dim=1).max(),"min": payments.sum(dim=1).min(), "mean": payments.sum(dim=1).mean()},
-        #                    global_step=epoch)
-        # writer.add_scalars('train/stat/ir_violation',
-        #                    {"max": ir_violation.max(), "min": ir_violation.min(), "mean": ir_violation.mean()},
-        #                    global_step=epoch)
-        # writer.add_scalars('train/stat/rp_violation',
-        #                    {"max": rp_violation.max(), "min": rp_violation.min(), "mean": rp_violation.mean()},
-        #                    global_step=epoch)
-        # writer.add_scalars('loss', {"regret": regret_loss,
-        #                             "payment": payment_loss,
-        #                             "ir_violation": ir_loss,
-        #                             "rp_violation": rp_loss
-        #                             }, global_step=epoch)
-
-        # writer.add_scalars('multiplier', {"regret": regret_mults.mean(),
-        #                                   "payment": payment_mult,
-        #                                   "ir_violation": ir_lagr_mults.mean(),
-        #                                   "rp_violation": rp_lagr_mults.mean()
-        #                                   }, global_step=epoch)
-
-
-def train_loop_ibp(
-    model,
-    dataset_tensor,
-    args,
-    device="cpu"
-):
-
-    lagr_mults = 1.0*torch.ones( (1, model.n_agents)).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=args.model_lr)
-    epoch_welfare_losses = []
-    epoch_pos_regret = []
-
-    iter=0
-
-    rho = args.rho
-    for epoch in tqdm(range(args.num_epochs)):
-        total_welfare_loss = 0.0
-        total_pos_regret = 0.0
-        n_items = 0
-        if epoch < args.num_epochs_natural:
-            eps = 0
-        elif epoch < args.num_epochs_natural+args.num_epochs_increase:
-            eps = (epoch-args.num_epochs_natural)/args.num_epochs_increase*args.final_eps
-        else:
-            eps = args.final_eps
-        for i in range(0, dataset_tensor.shape[0] - args.batch_size, args.batch_size):
-            iter += 1
-            batch = dataset_tensor[i : (i + args.batch_size), :, :].to(device)
-            n_items += batch.shape[0]
-
-            allocs, payments = model(batch)
-            truthful_util = calc_agent_util(batch, allocs, payments)
-
-            misreport_util = tiled_misreport_util_bound(batch, model, eps=eps)
-            regrets = misreport_util - truthful_util
-            positive_regrets = torch.clamp_min(regrets, .02)
-            quadratic_regrets = positive_regrets ** 2
-            lagr_penalty = lagr_mults * positive_regrets
-            auctioneer_total_utils = torch.sum(payments)
-
-            total_welfare_loss += auctioneer_total_utils.item()
-            total_pos_regret += torch.sum(positive_regrets).item() / args.n_agents
-            optimizer.zero_grad()
-            loss_func = torch.sum(lagr_penalty) + (rho / 2.0) * torch.sum(quadratic_regrets) - auctioneer_total_utils
-            loss_func.backward()
-            optimizer.step()
-
-            if iter % 1000 == 0:
-                with torch.no_grad():
-                    lagr_mults += rho * torch.mean(positive_regrets, dim=0)
-            if iter % args.rho_incr_iter == 0:
-                rho += args.rho_incr_amount
-        epoch_welfare_losses.append(total_welfare_loss / n_items)
-        epoch_pos_regret.append(total_pos_regret / n_items)
-
-        print(f"regret:{total_pos_regret / n_items}")
-        print(f"util:{total_welfare_loss / n_items}")
-
-    return epoch_welfare_losses, epoch_pos_regret
+                        'args': args}, f"result/{args.name}_{epoch}_checkpoint.pt")
+    return loss_list

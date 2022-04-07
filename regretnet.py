@@ -43,6 +43,7 @@ class RegretNet(nn.Module):
         # 输出为获得每个物品的竞拍人及每个竞拍人付出的支付价格
 
         self.payments_size = self.n_agents
+        # 100
 
         if self.a_activation == 'softmax':
             self.allocations_size = (self.n_agents + 1) * self.n_items
@@ -160,6 +161,7 @@ class RegretNet(nn.Module):
         allocs = self.allocation_head(x)
 
         if self.p_activation in ['frac_sigmoid', 'frac_relu_clipped']:
+            # [batch_size, n_agents, n_items]
             payments = self.payment_head(x) * torch.sum(
                 allocs * reports, dim=2
             )

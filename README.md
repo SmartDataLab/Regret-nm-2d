@@ -5,9 +5,13 @@ convert into the 2d space implement
 ## TODO
 
 - [done]run with inital implement 
-- [pick]find the regret net data
-- comment the regret net module
-- generate our 2d daya
+- [done]find the regret net data
+- [done]comment the regret net module
+- [done]generate our 2d data
+- [done]modify the train and test loop
+- [pick]use checkpoint to plot the heatmap
+- [pick]record the total stats and plot
+- [pick]write the experiment part according to the regretnet nm
 
 ## raw code explaination
 

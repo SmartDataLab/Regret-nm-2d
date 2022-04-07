@@ -29,16 +29,16 @@ from torch.utils.tensorboard import SummaryWriter
 #%%
 parser = ArgumentParser()
 parser.add_argument('--random-seed', type=int, default=0)
-parser.add_argument('--num-examples', type=int, default=100000)
-parser.add_argument('--test-num-examples', type=int, default=3000)
-parser.add_argument('--n-agents', type=int, default=100)
-parser.add_argument('--k-positions', type=int, default=20)
+parser.add_argument('--num-examples', type=int, default=400)
+parser.add_argument('--test-num-examples', type=int, default=100)
+parser.add_argument('--n-agents', type=int, default=10)
+parser.add_argument('--k-positions', type=int, default=5)
 parser.add_argument('--n-items', type=int, default=2)
 parser.add_argument('--reserved-price', type=float, default=0)
-parser.add_argument('--num-epochs', type=int, default=500)
-parser.add_argument('--batch-size', type=int, default=128)
-parser.add_argument('--test-batch-size', type=int, default=100)
-parser.add_argument('--model-lr', type=float, default=1e-3)
+parser.add_argument('--num-epochs', type=int, default=20)
+parser.add_argument('--batch-size', type=int, default=20)
+parser.add_argument('--test-batch-size', type=int, default=20)
+parser.add_argument('--model-lr', type=float, default=1e-2)
 parser.add_argument('--misreport-lr', type=float, default=0.1)
 parser.add_argument('--misreport-iter', type=int, default=25)
 parser.add_argument('--test-misreport-iter', type=int, default=1000)
@@ -54,12 +54,15 @@ parser.add_argument('--lagr_update_iter', type=int, default=6.0)
 parser.add_argument('--lagr_update_iter_ir', type=int, default=6.0)
 parser.add_argument('--lagr_update_iter_rp', type=int, default=6.0)
 parser.add_argument('--ir_penalty_power', type=float, default=2)
-parser.add_argument('--ip_penalty_power', type=float, default=2)
+parser.add_argument('--rp_penalty_power', type=float, default=2)
 parser.add_argument('--resume', default="")
 
 # architectural arguments
 parser.add_argument('--p_activation', default='full_relu_div')
+# parser.add_argument('--p_activation', default='full_linear')
 parser.add_argument('--a_activation', default='full_linear')
+# parser.add_argument('--a_activation', default='full_relu_clipped')
+# parser.add_argument('--a_activation', default='full_sigmoid_linear')
 parser.add_argument('--hidden_layer_size', type=int, default=100)
 parser.add_argument('--n_hidden_layers', type=int, default=2)
 parser.add_argument('--separate', action='store_true')
@@ -106,14 +109,72 @@ print("generate data finsh")
 test_data = generate_dataset_nxk(args.n_agents, args.n_items, args.test_num_examples).to(DEVICE)
 test_loader = Dataloader(test_data, batch_size=args.test_batch_size, shuffle=True)
 
+#%%
+# test_loop(
+#     model,
+#     test_loader,
+#     args,
+#     device=DEVICE
+# )
+#%%
+
 print("start train loop")
-train_loop(
+loss_list = train_loop(
     model, train_loader, test_loader, POSITION_RANGE, args, device=DEVICE, writer=writer
 )
-writer.close()
+#%%
+import matplotlib.pyplot as plt
+plt.plot(loss_list)
+# writer.close()
+#%%
+# plot the result 
+from util import plot_12_model, plot_payment, plot_loss, plot_regret
+#%%
+#%%
 pay, alloc, pay_result, result = test_loop(model, test_loader, args, device=DEVICE)
-print(f"Experiment:{args.name}")
-print(json.dumps(result, indent=4, sort_keys=True))
+#%%
+# print(f"Experiment:{args.name}")
+# print(json.dumps(result, indent=4, sort_keys=True))
 # plot_payment(model, grid_width=0.01, name=args.name)
 # plot_12_model(model, grid_width=0.01, name=args.name)
+alloc[0]
+#%%
+# %%
+# save the model
+# plot_12_model(model)
+# alloc[0].cpu().detach().numpy()
+c_dict = ["red", "yellow", "green", "orange", "black"]
+def plot_space_distribution(allocs):
+    for alloc in allocs:
+        alloc_ = alloc.cpu().detach().numpy()
+        for i in range(alloc_.shape[1]):
+            first_c = alloc_[:,i,:]
+            plt.scatter(first_c[:,0], first_c[:,1],c = c_dict[i],vmin=0,vmax=1)
+    plt.xlim([0, 1])
+    plt.ylim([0, 1])
+    plt.savefig("dist_%s.png" % alloc_.shape[1])
+    plt.show()
+
+# %%
+plot_space_distribution(alloc)
+# %%
+def plot_one_case(data, alloc, pay, id = 0):
+    plt.scatter(data[:,0], data[:,1], c="blue")
+    plt.scatter(alloc[0,0], alloc[0,1], s = pay[0] * 500, c="red")
+    plt.scatter(alloc[1,0], alloc[1,1], s = pay[1] * 500, c="yellow")
+    plt.scatter(alloc[2,0], alloc[2,1], s = pay[2] * 500, c="green")
+    plt.savefig("case_%s.png" % id)
+    plt.show()
+
+# %%
+data = next(test_loader)
+data
+#%%
+allocs, payments = model(data)
+allocs
+#%%
+id_ = 4
+plot_one_case(data.cpu().detach().numpy()[id_],
+        allocs.cpu().detach().numpy()[id_],
+        payments.cpu().detach().numpy()[id_],id_)
 # %%
